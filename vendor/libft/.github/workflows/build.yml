@@ -1,0 +1,59 @@
+name: Build C/C++ Project
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up compiler and build tools (with retries)
+        shell: bash
+        run: |
+          set -e
+          attempt=0
+          max=3
+          until [ $attempt -ge $max ]
+          do
+            attempt=$((attempt+1))
+            echo "Attempt $attempt / $max: apt-get update && install build-essential"
+            sudo apt-get update -y && sudo apt-get install -y build-essential libreadline-dev pkg-config || true
+            if command -v gcc >/dev/null 2>&1; then
+              echo "gcc present, continuing"
+              break
+            fi
+            echo "apt-get failed or gcc not available yet, sleeping before retry..."
+            sleep $((attempt * 5))
+          done
+          if ! command -v gcc >/dev/null 2>&1; then
+            echo "ERROR: compiler not installed after retries"
+            exit 1
+          fi
+
+      - name: Build project
+        run: make all
+        shell: bash
+
+      - name: List build output (debug)
+        run: ls -la
+        shell: bash
+
+      - name: Verify build output
+        run: |
+          if [ -f "libft.a" ]; then
+            echo "✓ libft.a successfully created"
+            ls -lh libft.a
+          else
+            echo "✗ libft.a not found"
+            exit 1
+          fi
+        shell: bash

@@ -1,0 +1,17 @@
+# build artifacts
+obj/
+ft_ping
+
+# vendored libft build output (sources are committed; artifacts are not)
+vendor/libft/build/
+
+# engineering kit — dev tooling, not part of the graded deliverable
+.claude/
+
+# benchmark output
+bench/results/
+
+# editor / OS noise
+*.o
+*.d
+.DS_Store

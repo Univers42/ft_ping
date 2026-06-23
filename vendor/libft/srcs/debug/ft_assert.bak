@@ -1,0 +1,280 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   ft_assert.c                                        :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2025/10/23 15:58:24 by dlesieur          #+#    #+#             */
+/*   Updated: 2026/01/23 19:16:05 by dlesieur         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
+/* Feature test macros - define before any system includes */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE
+#endif
+
+#ifndef _BSD_SOURCE
+#define _BSD_SOURCE
+#endif
+
+#include <signal.h>
+#include "ft_stdio.h"
+#include <sys/types.h>
+#include <unistd.h>
+#include <execinfo.h>
+#include <stdlib.h>
+#include <string.h>
+#include <dlfcn.h>
+#include <stdio.h>
+
+/* ANSI color codes for pretty output */
+#define RESET "\033[0m"
+#define BOLD "\033[1m"
+#define DIM "\033[2m"
+#define RED "\033[31m"
+#define GREEN "\033[32m"
+#define YELLOW "\033[33m"
+#define BLUE "\033[34m"
+#define MAGENTA "\033[35m"
+#define CYAN "\033[36m"
+#define WHITE "\033[37m"
+
+// /* Wrapper around system dladdr for symbol resolution */
+// static int ft_dladdr(void *addr, Dl_info *info)
+// {
+// 	if (!info)
+// 		return 0;
+// 	return (dladdr(addr, info) != 0);
+// }
+
+// /* Try to resolve addr with addr2line for a given binary path.
+//  * Returns 1 on success and stores the human string into out (must be large enough).
+//  */
+// static int try_addr2line(void *addr, const char *binary, char *out, size_t outlen)
+// {
+// 	char cmd[512];
+// 	FILE *fp;
+
+// 	if (!binary || !out)
+// 		return 0;
+// 	/* addr2line -f -p prints "func (file:line)". Accept hex pointer form. */
+// 	snprintf(cmd, sizeof(cmd), "addr2line -f -p -e %s %p 2>/dev/null", binary, addr);
+// 	fp = popen(cmd, "r");
+// 	if (!fp)
+// 		return 0;
+// 	if (fgets(out, outlen, fp) == NULL)
+// 	{
+// 		pclose(fp);
+// 		return 0;
+// 	}
+// 	pclose(fp);
+// 	/* trim newline */
+// 	size_t l = ft_strlen(out);
+// 	if (l && out[l - 1] == '\n')
+// 		out[l - 1] = '\0';
+// 	/* filter trivial output */
+// 	if (strcmp(out, "?? ??:0") == 0 || strcmp(out, "??:0") == 0 || out[0] == '\0')
+// 		return 0;
+// 	return 1;
+// }
+
+// /* Parse a backtrace symbol line and extract useful info */
+// static void parse_and_print_frame(int idx, char *symbol, void *addr)
+// {
+// 	char func_name[256];
+// 	char binary_name[256];
+// 	char offset[64];
+
+// 	func_name[0] = '\0';
+// 	binary_name[0] = '\0';
+// 	offset[0] = '\0';
+
+// 	/* Prefer dladdr-resolved info when available */
+// 	{
+// 		Dl_info info;
+// 		if (ft_dladdr(addr, &info) && info.dli_sname)
+// 		{
+// 			snprintf(func_name, sizeof(func_name), "%s", info.dli_sname ? info.dli_sname : "<unknown>");
+// 			if (info.dli_fname)
+// 				snprintf(binary_name, sizeof(binary_name), "%s", info.dli_fname);
+// 			if (info.dli_saddr)
+// 				snprintf(offset, sizeof(offset), "%p", info.dli_saddr);
+// 		}
+// 	}
+
+// 	/* If dladdr didn't provide function name, fall back to parsing backtrace_symbols text */
+// 	if (func_name[0] == '\0' && symbol)
+// 	{
+// 		char *start = symbol;
+// 		char *end = strchr(start, '(');
+// 		char *offset_start = NULL;
+
+// 		if (end && (end - start) < (int)sizeof(binary_name))
+// 		{
+// 			memcpy(binary_name, start, end - start);
+// 			binary_name[end - start] = '\0';
+// 			start = end + 1;
+// 		}
+// 		end = strchr(start, '+');
+// 		if (end && (end - start) > 0 && (end - start) < (int)sizeof(func_name))
+// 		{
+// 			memcpy(func_name, start, end - start);
+// 			func_name[end - start] = '\0';
+// 			offset_start = end + 1;
+// 			end = strchr(offset_start, ')');
+// 			if (end && (end - offset_start) < (int)sizeof(offset))
+// 			{
+// 				memcpy(offset, offset_start, end - offset_start);
+// 				offset[end - offset_start] = '\0';
+// 			}
+// 		}
+// 	}
+
+// 	/* If still unknown, try addr2line against common binaries */
+// 	if (func_name[0] == '\0')
+// 	{
+// 		char buf[512];
+// 		/* 1) try executable */
+// 		if (try_addr2line(addr, "/proc/self/exe", buf, sizeof(buf)))
+// 		{
+// 			/* addr2line prints "func (file:line)" - reuse as func_name and binary_name when possible */
+// 			/* bounded copy of addr2line output into func_name */
+// 			{
+// 				size_t blen = ft_strlen(buf);
+// 				size_t copy_len = blen < sizeof(func_name) ? blen : (sizeof(func_name) - 1);
+// 				memcpy(func_name, buf, copy_len);
+// 				func_name[copy_len] = '\0';
+// 			}
+// 		}
+// 		else
+// 		{
+// 			/* 2) try local libft.so (common development path) */
+// 			if (try_addr2line(addr, "./libft.so", buf, sizeof(buf)))
+// 			{
+// 				size_t blen = ft_strlen(buf);
+// 				size_t copy_len = blen < sizeof(func_name) ? blen : (sizeof(func_name) - 1);
+// 				memcpy(func_name, buf, copy_len);
+// 				func_name[copy_len] = '\0';
+// 			}
+// 		}
+// 	}
+
+// 	/* Print formatted frame with better visual hierarchy */
+// 	dprintf(STDERR_FILENO,
+// 			   "  " BOLD CYAN "│" RESET " " DIM "#%02d" RESET " " BOLD "[%p]" RESET,
+// 			   idx, addr);
+
+// 	if (func_name[0] != '\0')
+// 		dprintf(STDERR_FILENO, " " BOLD GREEN "→ %s" RESET, func_name);
+// 	else
+// 		dprintf(STDERR_FILENO, " " DIM YELLOW "→ <unknown>" RESET);
+
+// 	if (offset[0] != '\0')
+// 		dprintf(STDERR_FILENO, " " DIM "+%s" RESET, offset);
+
+// 	if (binary_name[0] != '\0')
+// 		dprintf(STDERR_FILENO, "\n      " BOLD CYAN "│" RESET " " DIM "in " BLUE "%s" RESET, binary_name);
+
+// 	dprintf(STDERR_FILENO, "\n");
+// }
+
+// /* Always print backtrace with enhanced formatting */
+// static void print_backtrace(void)
+// {
+// 	void *buf[64];
+// 	int n;
+// 	int i;
+// 	char **symbols;
+// 	pid_t pid;
+
+// 	n = backtrace(buf, (int)(sizeof(buf) / sizeof(buf[0])));
+// 	pid = getpid();
+
+// 	/* Header */
+// 	dprintf(STDERR_FILENO, "\n");
+// 	dprintf(STDERR_FILENO, BOLD RED "  ╔════════════════════════════════════════════════════════════╗\n" RESET);
+// 	dprintf(STDERR_FILENO, BOLD RED "  ║" RESET " " BOLD WHITE "🔍 STACK BACKTRACE" RESET " " DIM "(PID: %d, %d frames)" RESET "                " BOLD RED "║\n" RESET, pid, n);
+// 	dprintf(STDERR_FILENO, BOLD RED "  ╚════════════════════════════════════════════════════════════╝\n" RESET);
+// 	dprintf(STDERR_FILENO, "\n");
+
+// 	/* Get human-readable symbols */
+// 	symbols = backtrace_symbols(buf, n);
+
+// 	/* Print each frame with parsing */
+// 	for (i = 0; i < n; ++i)
+// 	{
+// 		if (symbols && symbols[i])
+// 			parse_and_print_frame(i, symbols[i], buf[i]);
+// 		else
+// 			dprintf(STDERR_FILENO, "  " BOLD CYAN "│" RESET " " DIM "#%02d" RESET " [%p]\n", i, buf[i]);
+// 	}
+
+// 	/* Footer */
+// 	dprintf(STDERR_FILENO, "\n");
+// 	dprintf(STDERR_FILENO, "  " BOLD CYAN "└─" RESET " " DIM "End of backtrace" RESET "\n");
+
+// 	/* Free symbols (allocated by backtrace_symbols) */
+// 	if (symbols)
+// 		free(symbols);
+
+// 	dprintf(STDERR_FILENO, "\n");
+// }
+
+// void ft_abort(void)
+// {
+// 	/* Prefer SIGABRT so previous output is visible; keep NORMA override */
+// 	signal(SIGABRT, SIG_DFL);
+// 	(void)kill(getpid(), SIGABRT);
+// }
+
+// static void xabort(void)
+// {
+// 	dprintf(STDERR_FILENO, "\n");
+// 	dprintf(STDERR_FILENO, BOLD RED "  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n" RESET);
+// 	dprintf(STDERR_FILENO, BOLD RED "  ┃" RESET " " BOLD WHITE "⚠️  ASSERTION FAILURE DETECTED" RESET "                          " BOLD RED "┃\n" RESET);
+// 	dprintf(STDERR_FILENO, BOLD RED "  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n" RESET);
+// 	print_backtrace();
+// 	dprintf(STDERR_FILENO, BOLD RED "  ▸ " RESET BOLD "Process terminated via SIGABRT\n" RESET);
+// 	dprintf(STDERR_FILENO, "\n");
+// 	ft_abort();
+// }
+
+// void ft_assert(int cond)
+// {
+// 	void *caller;
+// 	Dl_info info;
+
+// 	if (cond)
+// 		return;
+
+// 	/* Header banner */
+// 	dprintf(STDERR_FILENO, "\n");
+// 	dprintf(STDERR_FILENO, BOLD YELLOW "  ═══════════════════════════════════════════════════════════\n" RESET);
+// 	dprintf(STDERR_FILENO, BOLD RED "  ✗ ASSERTION FAILED" RESET "\n");
+// 	dprintf(STDERR_FILENO, BOLD YELLOW "  ───────────────────────────────────────────────────────────\n" RESET);
+
+// 	caller = __builtin_return_address(0);
+// 	if (ft_dladdr(caller, &info) && info.dli_sname)
+// 		dprintf(STDERR_FILENO,
+// 				   "  " DIM "Function:  " RESET GREEN "%s" RESET "\n"
+// 				   "  " DIM "Object:    " RESET BLUE "%s" RESET "\n",
+// 				   (info.dli_sname ? info.dli_sname : "??"),
+// 				   (info.dli_fname ? info.dli_fname : "??"));
+// 	else
+// 		dprintf(STDERR_FILENO,
+// 				   "  " DIM "Caller:    " RESET BOLD "%p" RESET "\n", caller);
+
+// 	dprintf(STDERR_FILENO, BOLD YELLOW "  ═══════════════════════════════════════════════════════════\n" RESET);
+
+// 	xabort();
+// }

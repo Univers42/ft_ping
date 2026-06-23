@@ -1,0 +1,1 @@
+find srcs/ -type d -exec touch {}/README.md \;

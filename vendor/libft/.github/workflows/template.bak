@@ -1,0 +1,79 @@
+# This is the name of your workflow. It will show up in the "Actions" tab.
+name: C/C++ CI
+
+# 1. Triggers: When to run this workflow
+on:
+  # Run on every push to the 'main' or 'master' branch
+  push:
+    branches: [ "main", "master" ]
+  # Run on every pull request that targets 'main' or 'master'
+  pull_request:
+    branches: [ "main", "master" ]
+  
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# 2. Jobs: What to do
+jobs:
+  # This is the ID of the job, e.g., "build-and-test"
+  build-and-test:
+    # 3. Matrix: Create parallel jobs for different OSs
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    
+    # Set the virtual machine for each job in the matrix
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    # Step 1: Check out your code from the repository
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    # Step 2: Install compiler (different for each OS)
+    - name: Set up C Compiler
+      run: |
+        if [ "${{ runner.os }}" == "Linux" ]; then
+          sudo apt-get update
+          sudo apt-get install -y gcc build-essential
+        elif [ "${{ runner.os }}" == "macOS" ]; then
+          # Xcode (which has clang) is usually pre-installed
+          echo "Using pre-installed Clang on macOS"
+        elif [ "${{ runner.os }}" == "Windows" ]; then
+          # Use MSYS2 to get GCC (MinGW)
+          choco install msys2
+          C:/msys64/usr/bin/pacman -Syu --noconfirm
+          C:/msys64/usr/bin/pacman -S --noconfirm mingw-w64-x86_64-gcc mingw-w64-x86_64-make
+          echo "C:\msys64\mingw64\bin" >> $GITHUB_PATH
+        fi
+      shell: bash
+
+    # Step 3: Run your Makefile (Build)
+    # This runs `make all` using parallel jobs
+    - name: Build with Make
+      run: make -j all
+      # On Windows, we must use the bash shell from MSYS2
+      shell: ${{ runner.os == 'Windows' && 'C:\msys64\usr\bin\bash.exe -l {0}' || 'bash' }}
+
+    # Step 4: Run your tests (Test)
+    # !! ASSUMPTION: You must create a "test" target in your Makefile
+    #    that builds and runs your test executable.
+    - name: Run Tests
+      run: make test
+      # On Windows, we must use the bash shell from MSYS2
+      shell: ${{ runner.os == 'Windows' && 'C:\msys64\usr\bin\bash.exe -l {0}' || 'bash' }}
+
+    # Step 5: Upload the compiled libraries (Artifacts)
+    # This finds files ending in .a or .so/.dll and saves them.
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        # The name of the artifact zip file (e.g., "libs-ubuntu-latest")
+        name: my-library-${{ matrix.os }}
+        # The path to the files you want to upload
+        # Adjust 'build/' to wherever your Makefile puts the final files
+        path: |
+          build/*.a
+          build/*.so
+          build/*.dll
+        retention-days: 7

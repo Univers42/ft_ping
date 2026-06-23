@@ -1,0 +1,37 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   calloc.c                                           :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2025/11/25 11:47:30 by dlesieur          #+#    #+#             */
+/*   Updated: 2026/03/13 23:47:34 by dlesieur         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
+#include "alloc.h"
+#include "private/private.h"
+
+#ifndef NO_CALLOC
+
+t_addr	ft_calloc(size_t n, size_t s)
+{
+	t_addr	r;
+
+	malloc_lock();
+	ensure_init();
+	r = internal_calloc(n, s, (char *) NULL, 0);
+	malloc_unlock();
+	return (r);
+}
+
+void	ft_cfree(t_addr mem)
+{
+	malloc_lock();
+	ensure_init();
+	internal_cfree(mem, (char *) NULL, 0, 0);
+	malloc_unlock();
+}
+
+#endif
